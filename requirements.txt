@@ -4,3 +4,4 @@ python-dotenv==1.0.1
 pytz==2024.2
 sqlalchemy==2.0.34
 pandas==2.2.2
+matplotlib

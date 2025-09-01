@@ -9,7 +9,12 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, N
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
+DB_DIR = os.getenv("DB_DIR", "db")  
 
+def _db_path_for_user(user_id: str) -> str:
+    """Return absolute path for a given user’s SQLite DB file"""
+    os.makedirs(DB_DIR, exist_ok=True)
+    return os.path.join(DB_DIR, f"user_{user_id}.db")
 class Report(Base):
     __tablename__ = "reports"
     id = Column(Integer, primary_key=True, autoincrement=True)

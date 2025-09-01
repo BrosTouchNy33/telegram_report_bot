@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- Filters -->
+<div class="bg-white border border-slate-200 rounded-xl p-4 mb-6">
+  <div class="grid md:grid-cols-5 gap-3 items-end">
+    <div>
+      <label class="text-xs text-slate-500">User</label>
+      <select id="userSel" class="w-full px-3 py-2 border rounded-md">
+        <option value="">All users</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-slate-500">Tag (no #)</label>
+      <input id="tagInp" placeholder="betting, salary, …" class="w-full px-3 py-2 border rounded-md"/>
+    </div>
+<div>
+  <label class="text-xs text-slate-500">From</label>
+  <input id="startInp" type="date"
+         class="w-full px-3 py-2 border rounded-md"
+         value="{{ default_start_local }}">
+</div>
+<div>
+  <label class="text-xs text-slate-500">To</label>
+  <input id="endInp" type="date"
+         class="w-full px-3 py-2 border rounded-md"
+         value="{{ default_end_local }}">
+</div>
+
+    <div class="flex gap-2">
+      <button id="applyBtn" class="px-4 py-2 rounded-md bg-slate-900 text-white">Apply</button>
+      <a id="exportBtn" href="#" class="px-4 py-2 rounded-md border">Export CSV</a>
+    </div>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="grid md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white border rounded-xl p-4">
+    <div class="text-xs text-slate-500">Entries</div>
+    <div id="kpiCount" class="text-2xl font-semibold">–</div>
+  </div>
+  <div class="bg-white border rounded-xl p-4">
+    <div class="text-xs text-slate-500">Total (signed)</div>
+    <div id="kpiTotal" class="text-2xl font-semibold">–</div>
+  </div>
+  <div class="bg-white border rounded-xl p-4">
+    <div class="text-xs text-slate-500">Deposits (+)</div>
+    <div id="kpiPos" class="text-2xl font-semibold">–</div>
+  </div>
+  <div class="bg-white border rounded-xl p-4">
+    <div class="text-xs text-slate-500">Expenses (–)</div>
+    <div id="kpiNeg" class="text-2xl font-semibold">–</div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="grid lg:grid-cols-2 gap-4 mb-6">
+  <div class="bg-white border rounded-xl p-4">
+    <div class="text-sm font-medium mb-2">Totals by day</div>
+    <canvas id="dayChart" height="120"></canvas>
+  </div>
+  <div class="bg-white border rounded-xl p-4">
+    <div class="text-sm font-medium mb-2">Top categories</div>
+    <canvas id="catChart" height="120"></canvas>
+  </div>
+</div>
+
+<!-- Data table -->
+<div class="bg-white border rounded-xl">
+  <div class="px-4 py-3 border-b text-sm font-medium">All data</div>
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-slate-50">
+        <tr>
+          <th class="px-4 py-2 text-left">User</th>
+          <th class="px-4 py-2 text-left">Entry ID</th>
+          <th class="px-4 py-2 text-left">When</th>
+          <th class="px-4 py-2 text-left">Category</th>
+          <th class="px-4 py-2 text-left">Value</th>
+          <th class="px-4 py-2 text-right">Amount</th>
+          <th class="px-4 py-2 text-center">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rowsTbody">
+        <tr><td class="px-4 py-3 text-slate-400" colspan="7">No data</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="flex items-center justify-between px-4 py-3 border-t">
+    <div class="text-xs text-slate-500" id="pageInfo">Page 1</div>
+    <div class="flex gap-2">
+      <button id="prevBtn" class="px-3 py-1.5 border rounded-md">Prev</button>
+      <button id="nextBtn" class="px-3 py-1.5 border rounded-md">Next</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/dashboard.js"></script>
+{% endblock %}

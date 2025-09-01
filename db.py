@@ -2,17 +2,20 @@ from __future__ import annotations
 import datetime as dt
 from datetime import timezone as _tz
 from typing import Optional, List
-import os
-import glob
+
+import os, glob
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+from sqlalchemy.orm import declarative_base, sessionmaker
+import datetime as dt
+
+DB_DIR = os.getenv("DB_DIR", "db")  # default local ./db
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Numeric
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-Base = declarative_base()
-DB_DIR = os.getenv("DB_DIR", "db")  
+Base = declarative_base()  
 
 def _db_path_for_user(user_id: str) -> str:
-    """Return absolute path for a given user’s SQLite DB file"""
     os.makedirs(DB_DIR, exist_ok=True)
     return os.path.join(DB_DIR, f"user_{user_id}.db")
 class Report(Base):
@@ -43,8 +46,8 @@ def _get_session(user_id: str):
     return SessionLocal()
 
 def _iter_all_user_db_paths() -> list[str]:
-    os.makedirs("db", exist_ok=True)
-    return sorted(glob.glob("db/user_*.db"))
+    os.makedirs(DB_DIR, exist_ok=True)
+    return sorted(glob.glob(os.path.join(DB_DIR, "user_*.db")))
 
 def _get_session_for_path(path: str):
     engine = _engine_for_path(path)

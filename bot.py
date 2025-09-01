@@ -1,8 +1,15 @@
 from __future__ import annotations
-import os, logging, datetime as dt, csv, re
+
+import os
+import re
+import csv
+import logging
+import datetime as dt
+from typing import Optional, List
+
 import pytz
 from datetime import timezone as _tz
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -17,13 +24,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("auto_sam")
 
 # ---------- Config / Env ----------
-cfg = {**dotenv_values(".env"), **os.environ}
-BOT_TOKEN = cfg.get("TELEGRAM_BOT_TOKEN")
-if not BOT_TOKEN:
-    raise SystemExit("TELEGRAM_BOT_TOKEN missing in .env")
+# Load .env ONLY for local development. In production (Railway), runtime envs will be used.
+load_dotenv(override=False)
 
-TZNAME = cfg.get("TIMEZONE", "Asia/Phnom_Penh")
-TZ = pytz.timezone(TZNAME)
+def _get_bool(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return str(val).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not BOT_TOKEN:
+    raise SystemExit("ERROR: TELEGRAM_BOT_TOKEN not set in environment.")
+
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")  # optional
+TZNAME = os.getenv("TIMEZONE", "Asia/Phnom_Penh")
+ENABLE_SCHEDULER = _get_bool("ENABLE_SCHEDULER", False)
+
+try:
+    TZ = pytz.timezone(TZNAME)
+except Exception:
+    TZ = pytz.timezone("Asia/Phnom_Penh")
+    log.warning("Invalid TIMEZONE '%s'; falling back to Asia/Phnom_Penh", TZNAME)
+
+log.info(
+    "Config loaded | TIMEZONE=%s ENABLE_SCHEDULER=%s ADMIN_CHAT_ID=%s",
+    TZ.zone, ENABLE_SCHEDULER, ADMIN_CHAT_ID or "(none)"
+)
 
 HELP_TEXT = (
   "Hi! I’m Auto SAM 🤖\n\n"
@@ -58,9 +85,9 @@ def _range_for_period(period: str) -> tuple[dt.datetime, dt.datetime, str]:
     else:  # monthly
         start_local = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         if start_local.month == 12:
-            next_month = start_local.replace(year=start_local.year+1, month=1)
+            next_month = start_local.replace(year=start_local.year + 1, month=1)
         else:
-            next_month = start_local.replace(month=start_local.month+1)
+            next_month = start_local.replace(month=start_local.month + 1)
         end_local = (next_month - dt.timedelta(seconds=1)).replace(hour=23, minute=59, second=0, microsecond=0)
         label = now_local.strftime("%Y-%m")
     return start_local.astimezone(pytz.UTC), end_local.astimezone(pytz.UTC), label
@@ -75,7 +102,7 @@ def _parse_free_text_from_msg(msg: str) -> str | None:
             after = t.split("\n", 1)
             t = after[1].strip() if len(after) > 1 else ""
         else:
-            t = t[first_sp+1:].strip()
+            t = t[first_sp + 1 :].strip()
     return t or None
 
 def _who_from_row(r) -> str:

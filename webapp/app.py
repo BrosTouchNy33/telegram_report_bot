@@ -49,7 +49,6 @@ def logout():
 
 # ---------- DB helpers ----------
 def _db_files():
-    """Iterate all user DBs in the configured DB_DIR"""
     os.makedirs(DB_DIR, exist_ok=True)
     for path in glob.glob(os.path.join(DB_DIR, "user_*.db")):
         user_id = os.path.splitext(os.path.basename(path))[0].replace("user_", "")
@@ -73,7 +72,10 @@ def _apply_filters(q, start_dt: Optional[dt.datetime], end_dt: Optional[dt.datet
     if end_dt:   q = q.filter(Report.created_at <= end_dt)
     if category: q = q.filter(func.lower(Report.category) == category.lower())
     return q
-
+@app.get("/__debug/dbs")
+@login_required
+def dbg_dbs():
+    return jsonify(sorted([p for _, p in _db_files()]))
 # ---------- Pages ----------
 @app.route("/")
 @login_required
@@ -257,8 +259,13 @@ def api_delete():
         s.commit()
     return jsonify({"ok": True})
 
+@app.get("/health")
+def health():
+    return "ok", 200
+
 # CSV export (honors filters)
 @app.get("/export.csv")
+
 @login_required
 def export_csv():
     user_id = request.args.get("user") or None

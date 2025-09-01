@@ -25,4 +25,4 @@ RUN mkdir -p /data /app/exports
 ENV DB_PATH=/data/auto_sam.db
 
 # Run the bot (polling)
-CMD ["python", "Bot.py"]
+CMD ["python", "bot.py"]

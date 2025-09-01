@@ -1,56 +1,48 @@
 from __future__ import annotations
-
-import os
-import re
-import csv
-import logging
-import datetime as dt
-from typing import Optional, List
-
+import os, logging, datetime as dt, csv, re
 import pytz
 from datetime import timezone as _tz
-from dotenv import load_dotenv
-from telegram import Update, InputFile
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# per-user DB functions
+# Telegram
+from telegram import Update, InputFile
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, filters, ContextTypes
+)
+
+# Local DB helpers
 from db import (
     save_report, list_reports, list_between,
-    delete_by_id, delete_last, count_between, delete_between, update_note
+    delete_by_id, delete_last, count_between,
+    delete_between, update_note
 )
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("auto_sam")
 
-# ---------- Config / Env ----------
-# Load .env ONLY for local development. In production (Railway), runtime envs will be used.
-load_dotenv(override=False)
-
-def _get_bool(name: str, default: bool = False) -> bool:
-    val = os.getenv(name)
-    if val is None:
-        return default
-    return str(val).strip().lower() in {"1", "true", "yes", "y", "on"}
+# ---------- Env / Config ----------
+# For LOCAL dev you can keep a .env: the following only loads it if present.
+try:
+    from dotenv import load_dotenv  # optional dependency; already in requirements.txt
+    load_dotenv()  # no-op on Railway (no .env file), helpful locally
+except Exception:
+    pass
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not BOT_TOKEN:
-    raise SystemExit("ERROR: TELEGRAM_BOT_TOKEN not set in environment.")
+    # On Railway this MUST come from Variables UI (no quotes):
+    # TELEGRAM_BOT_TOKEN=8218...:AAAA...
+    raise SystemExit("❌ TELEGRAM_BOT_TOKEN not set in environment!")
 
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")  # optional
 TZNAME = os.getenv("TIMEZONE", "Asia/Phnom_Penh")
-ENABLE_SCHEDULER = _get_bool("ENABLE_SCHEDULER", False)
-
 try:
     TZ = pytz.timezone(TZNAME)
 except Exception:
     TZ = pytz.timezone("Asia/Phnom_Penh")
-    log.warning("Invalid TIMEZONE '%s'; falling back to Asia/Phnom_Penh", TZNAME)
 
-log.info(
-    "Config loaded | TIMEZONE=%s ENABLE_SCHEDULER=%s ADMIN_CHAT_ID=%s",
-    TZ.zone, ENABLE_SCHEDULER, ADMIN_CHAT_ID or "(none)"
-)
+# Optional flags (not strictly used by this worker, but safe to keep)
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "REPLACE_ME")
+ENABLE_SCHEDULER = os.getenv("ENABLE_SCHEDULER", "true").lower() == "true"
 
 HELP_TEXT = (
   "Hi! I’m Auto SAM 🤖\n\n"
@@ -375,6 +367,7 @@ async def breakdown_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # -------- Main --------
 def main():
+    log.info("Starting bot application…")
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))

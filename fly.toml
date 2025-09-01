@@ -1,0 +1,20 @@
+cat > fly.toml <<'EOF'
+app = "auto-sam-bot-sin"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TIMEZONE = "Asia/Phnom_Penh"
+  SHOW_ONLY_SELF = "true"
+  ENABLE_SCHEDULER = "false"
+  DB_PATH = "/data/auto_sam.db"
+
+[processes]
+  app = "python Bot.py"
+
+[[mounts]]
+  source = "botdata"
+  destination = "/data"
+EOF

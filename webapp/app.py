@@ -4,7 +4,7 @@ import sys, os, glob, csv, datetime as dt
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from functools import wraps
-from typing import Optional, Iterable, Tuple, Dict
+from typing import Optional, Dict
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 
 from db import Report, Base  # ensure models are loaded
+
 DB_DIR = os.getenv("DB_DIR", "db")
 
 app = Flask(__name__)
@@ -72,10 +73,17 @@ def _apply_filters(q, start_dt: Optional[dt.datetime], end_dt: Optional[dt.datet
     if end_dt:   q = q.filter(Report.created_at <= end_dt)
     if category: q = q.filter(func.lower(Report.category) == category.lower())
     return q
+
 @app.get("/__debug/dbs")
 @login_required
 def dbg_dbs():
     return jsonify(sorted([p for _, p in _db_files()]))
+
+@app.get("/__debug/env")
+@login_required
+def dbg_env():
+    return jsonify({"DB_DIR": DB_DIR})
+
 # ---------- Pages ----------
 @app.route("/")
 @login_required
@@ -84,30 +92,24 @@ def dashboard():
     now = dt.datetime.utcnow().replace(second=0, microsecond=0)
     start = (now - dt.timedelta(days=7)).replace(hour=0, minute=0)
 
-    # format for <input type="datetime-local"> => YYYY-MM-DDTHH:MM (no seconds)
     def fmt_local(d: dt.datetime) -> str:
         return d.strftime("%Y-%m-%dT%H:%M")
 
     return render_template(
         "index.html",
-        default_start_iso=start.isoformat(),  # kept in case you still need it
+        default_start_iso=start.isoformat(),
         default_end_iso=now.isoformat(),
         default_start_local=fmt_local(start),
         default_end_local=fmt_local(now),
     )
 
-
 # ---------- APIs ----------
 @app.get("/api/users")
 @login_required
 def api_users():
-    """
-    Returns [{id, name}] where name prefers username, falls back to the ID.
-    """
     users = []
     for uid, path in _db_files():
         display = uid
-        # try to fetch latest username if available
         with _session_for(path) as s:
             row = (
                 s.query(Report.username)
@@ -131,7 +133,7 @@ def api_summary_day_fast():
 
     buckets: Dict[str, float] = {}
     for uid, path in _db_files():
-        if user_id and uid != user_id: 
+        if user_id and uid != user_id:
             continue
         with _session_for(path) as s:
             q = s.query(func.date(Report.created_at), func.sum(Report.amount))
@@ -153,14 +155,16 @@ def api_summary_topcats_fast():
 
     buckets: Dict[str, float] = {}
     for uid, path in _db_files():
-        if user_id and uid != user_id: 
+        if user_id and uid != user_id:
             continue
         with _session_for(path) as s:
             q = s.query(
                 func.coalesce(func.lower(Report.category), "uncategorized"),
                 func.sum(Report.amount)
             )
-            q = _apply_filters(q, start, end, category).group_by(func.coalesce(func.lower(Report.category), "uncategorized"))
+            q = _apply_filters(q, start, end, category).group_by(
+                func.coalesce(func.lower(Report.category), "uncategorized")
+            )
             for cat, total in q.all():
                 buckets[cat] = buckets.get(cat, 0.0) + float(total or 0)
 
@@ -171,12 +175,6 @@ def api_summary_topcats_fast():
 @app.get("/api/reports_table")
 @login_required
 def api_reports_table():
-    """
-    Paginated, filtered table rows.
-    Returns:
-      { rows: [{user_id, user_name, id, when_iso, category, note, amount}],
-        page, page_size, total }
-    """
     user_id = request.args.get("user") or None
     start = _date_parse(request.args.get("start"))
     end   = _date_parse(request.args.get("end"))
@@ -184,7 +182,6 @@ def api_reports_table():
     page = max(int(request.args.get("page", 1)), 1)
     page_size = min(max(int(request.args.get("page_size", 20)), 1), 200)
 
-    # collect across user DBs
     rows = []
     total = 0
     for uid, path in _db_files():
@@ -194,13 +191,10 @@ def api_reports_table():
             base = s.query(Report).order_by(Report.created_at.desc())
             base = _apply_filters(base, start, end, category)
 
-            # count per file
             total += base.count()
 
-            # current page slice per file (simple approach)
             offset = (page - 1) * page_size
             for r in base.offset(offset).limit(page_size).all():
-                name = r.username or uid
                 rows.append({
                     "user_id": uid,
                     "user_name": f"@{r.username}" if r.username else uid,
@@ -211,7 +205,6 @@ def api_reports_table():
                     "amount": float(r.amount or 0.0),
                 })
 
-    # sort merged page again (since we paged per-file)
     rows.sort(key=lambda x: x["when_iso"] or "", reverse=True)
     return jsonify({"rows": rows[:page_size], "page": page, "page_size": page_size, "total": total})
 
@@ -225,7 +218,7 @@ def api_update():
     amount = request.form.get("amount")
     if not uid or not entry_id:
         abort(400)
-    path = f"db/user_{uid}.db"
+    path = os.path.join(DB_DIR, f"user_{uid}.db")
     if not os.path.exists(path):
         abort(404)
     with _session_for(path) as s:
@@ -248,7 +241,7 @@ def api_delete():
     entry_id = request.form.get("entry_id")
     if not uid or not entry_id:
         abort(400)
-    path = f"db/user_{uid}.db"
+    path = os.path.join(DB_DIR, f"user_{uid}.db")
     if not os.path.exists(path):
         abort(404)
     with _session_for(path) as s:
@@ -265,7 +258,6 @@ def health():
 
 # CSV export (honors filters)
 @app.get("/export.csv")
-
 @login_required
 def export_csv():
     user_id = request.args.get("user") or None
@@ -278,7 +270,7 @@ def export_csv():
         w = csv.writer(f)
         w.writerow(["user_id", "username", "entry_id", "category", "amount", "note", "created_at"])
         for uid, path in _db_files():
-            if user_id and uid != user_id: 
+            if user_id and uid != user_id:
                 continue
             with _session_for(path) as s:
                 q = s.query(Report).order_by(Report.created_at.desc())
@@ -292,4 +284,3 @@ if __name__ == "__main__":
     host = os.getenv("WEB_HOST", "0.0.0.0")
     port = int(os.getenv("PORT", os.getenv("WEB_PORT", "8080")))
     app.run(host=host, port=port, debug=False)
-

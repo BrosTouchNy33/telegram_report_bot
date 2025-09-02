@@ -1,25 +1,37 @@
+
 from __future__ import annotations
+
+import os
+import glob
 import datetime as dt
 from datetime import timezone as _tz
 from typing import Optional, List
 
-import os, glob
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Text,
+    Numeric,
+    func,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker
-import datetime as dt
 
-DB_DIR = os.getenv("DB_DIR", "db")  # default local ./db
+# ---------- Config ----------
+# Default to ./db locally; override with DB_DIR=/data in prod (Railway, etc.)
+DB_DIR = os.getenv("DB_DIR", "db")
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Numeric
-from sqlalchemy.orm import declarative_base, sessionmaker
+# Ensure the directory exists early
+os.makedirs(DB_DIR, exist_ok=True)
 
-Base = declarative_base()  
+Base = declarative_base()
 
-def _db_path_for_user(user_id: str) -> str:
-    os.makedirs(DB_DIR, exist_ok=True)
-    return os.path.join(DB_DIR, f"user_{user_id}.db")
+# ---------- Models ----------
 class Report(Base):
     __tablename__ = "reports"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String(64), index=True, nullable=False)
     username = Column(String(255))
@@ -27,18 +39,23 @@ class Report(Base):
     amount = Column(Numeric(18, 2), default=0)
     category = Column(String(64), index=True)
     note = Column(Text)
-    created_at = Column(DateTime(timezone=True), nullable=False,
-                        default=lambda: dt.datetime.now(_tz.utc))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: dt.datetime.now(_tz.utc),
+    )
 
-# -------- internal helpers --------
+# ---------- Path / Engine helpers ----------
 def _db_path_for_user(user_id: str) -> str:
-    os.makedirs("db", exist_ok=True)
-    return f"db/user_{user_id}.db"
+    """Return per-user SQLite path inside DB_DIR."""
+    os.makedirs(DB_DIR, exist_ok=True)
+    return os.path.join(DB_DIR, f"user_{user_id}.db")
 
 def _engine_for_path(path: str):
     return create_engine(f"sqlite:///{path}", future=True)
 
 def _get_session(user_id: str):
+    """Session bound to the per-user DB (auto-creates schema)."""
     db_path = _db_path_for_user(user_id)
     engine = _engine_for_path(db_path)
     Base.metadata.create_all(engine)
@@ -46,6 +63,7 @@ def _get_session(user_id: str):
     return SessionLocal()
 
 def _iter_all_user_db_paths() -> list[str]:
+    """List all per-user DB files found under DB_DIR."""
     os.makedirs(DB_DIR, exist_ok=True)
     return sorted(glob.glob(os.path.join(DB_DIR, "user_*.db")))
 
@@ -55,7 +73,7 @@ def _get_session_for_path(path: str):
     SessionLocal = sessionmaker(bind=engine, future=True, expire_on_commit=False)
     return SessionLocal()
 
-# -------- CRUD functions --------
+# ---------- CRUD ----------
 def save_report(
     user_id: str,
     username: Optional[str],
@@ -69,6 +87,7 @@ def save_report(
         created_at = dt.datetime.now(_tz.utc)
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=_tz.utc)
+
     with _get_session(user_id) as s:
         r = Report(
             user_id=str(user_id),
@@ -117,6 +136,7 @@ def list_between(
         start_dt = start_dt.replace(tzinfo=_tz.utc)
     if end_dt.tzinfo is None:
         end_dt = end_dt.replace(tzinfo=_tz.utc)
+
     with _get_session(user_id) as s:
         q = s.query(Report).filter(Report.created_at >= start_dt, Report.created_at <= end_dt)
         if period:
@@ -132,7 +152,7 @@ def list_between_all(
     period: Optional[str] = None,
     category: Optional[str] = None,
 ) -> List[Report]:
-    """Aggregate across ALL user db files."""
+    """Aggregate rows across ALL user DB files under DB_DIR."""
     if start_dt.tzinfo is None:
         start_dt = start_dt.replace(tzinfo=_tz.utc)
     if end_dt.tzinfo is None:
@@ -168,22 +188,34 @@ def delete_last(user_id: str) -> int:
         s.commit()
         return 1
 
-def count_between(start_dt: dt.datetime, end_dt: dt.datetime, user_id: str, category: Optional[str] = None) -> int:
+def count_between(
+    start_dt: dt.datetime,
+    end_dt: dt.datetime,
+    user_id: str,
+    category: Optional[str] = None,
+) -> int:
     if start_dt.tzinfo is None:
         start_dt = start_dt.replace(tzinfo=_tz.utc)
     if end_dt.tzinfo is None:
         end_dt = end_dt.replace(tzinfo=_tz.utc)
+
     with _get_session(user_id) as s:
         q = s.query(Report).filter(Report.created_at >= start_dt, Report.created_at <= end_dt)
         if category:
             q = q.filter(Report.category == category.lower())
         return q.count()
 
-def delete_between(start_dt: dt.datetime, end_dt: dt.datetime, user_id: str, category: Optional[str] = None) -> int:
+def delete_between(
+    start_dt: dt.datetime,
+    end_dt: dt.datetime,
+    user_id: str,
+    category: Optional[str] = None,
+) -> int:
     if start_dt.tzinfo is None:
         start_dt = start_dt.replace(tzinfo=_tz.utc)
     if end_dt.tzinfo is None:
         end_dt = end_dt.replace(tzinfo=_tz.utc)
+
     with _get_session(user_id) as s:
         q = s.query(Report).filter(Report.created_at >= start_dt, Report.created_at <= end_dt)
         if category:
